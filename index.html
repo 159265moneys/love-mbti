@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>恋愛傾向診断（ページング版・ハート塗りルール調整済み）</title>
+  <style>
+:root{
+  --pos:#fb64b6; --pos-light:#ffe3ea;
+  --neg:#278733; --neg-light:#e7f3ff;
+  --bg:#ffffff; --fg:#111111;
+  --container-max:780px;
+  --gutter-desktop:20px;
+  --gutter-mobile:12px;
+  --dot-min:34px; --dot-max:56px; --ring:8px; --gap:12px;
+  --card-radius:10px;
+  --card-shadow:0 6px 18px rgba(0,0,0,0.04);
+   --label-personality:#6c5ce7; /* 性格 */
+  --label-love:#fb64b6;        /* 恋愛の性質 */
+  --label-match:#00d5be;       /* 相性（おすすめ） */
+   --label-tip:#ff9800;         /* 付き合い方のコツ*/
+}
+/* reset-lite */
+*, *::before, *::after { box-sizing:border-box; }
+html, body { height:100%; margin:0; padding:0; }
+body{
+  font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Segoe UI",Roboto,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--fg);
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding:18px 0;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+.page{
+  width:100%;
+  max-width:calc(var(--container-max) + var(--gutter-desktop)*2);
+  padding:0 var(--gutter-desktop);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:18px;
+  margin:0 auto;
+}
+.hero img{ width:100%; height:auto; display:block; object-fit:cover; border-radius:0; }
+.container{ width:100%; max-width:var(--container-max); margin:0 auto; }
+/* 質問カード */
+.question-block{
+  background:#fff;
+  border-radius:var(--card-radius);
+  padding:14px 14px 26px;
+  margin-bottom:18px;
+  box-shadow:var(--card-shadow);
+  text-align:left;
+}
+.question-text{ font-size:18px; margin:0 0 10px; line-height:1.5; }
+.scale-labels{ display:flex; justify-content:space-between; align-items:center; font-size:12px; margin:4px 0 10px; }
+.scale-labels .neg{ color:var(--neg); }
+.scale-labels .pos{ color:var(--pos); }
+.choices{
+  display:flex; gap:var(--gap);
+  justify-content:center;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  padding:8px calc(6px + var(--ring)) 10px;
+  --dot: clamp(var(--dot-min), calc((100% - (var(--gap) * 5)) / 6), var(--dot-max));
+}
+.choices::before, .choices::after{ content:""; flex:0 0 8px; }
+/* ハート型ボタン（見た目はJSで完全制御） */
+.choice-btn{
+  width:calc(var(--dot) * var(--mult, 1));
+  aspect-ratio:1 / 1;
+  border:none; background:transparent;
+  display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  position:relative; z-index:3;
+  user-select:none; -webkit-tap-highlight-color:transparent;
+  padding:0; line-height:1;
+  transition:transform .12s ease, filter .12s ease;
+}
+/* ← ご要望によりフォーカスのグレー枠は完全に消します */
+.choice-btn:focus{ outline:none; }
+.choice-btn:focus-visible{ outline:none; }
+.choice-btn svg{ width:100%; height:100%; display:block; }
+.choice-btn[data-size="100"]{ --mult:1.00; }
+.choice-btn[data-size="85"] { --mult:0.85; }
+.choice-btn[data-size="70"] { --mult:0.70; }
+/* ページングUI */
+.pager{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin:0 auto; max-width:var(--container-max); width:100%;
+}
+.pager .left, .pager .right{ display:flex; gap:8px; }
+/* ボタン幅を一定にして、visibility:hiddenでもスペースを確保 */
+.pager-btn{
+  background:#fff; border:1px solid #e5e5e5; border-radius:8px;
+  padding:10px 14px; cursor:pointer; box-shadow:var(--card-shadow);
+  min-width:88px; text-align:center;
+}
+.pager-btn[disabled]{ opacity:.5; cursor:not-allowed; }
+.page-dots{ display:flex; gap:6px; align-items:center; justify-content:center; flex:1; }
+.page-dot{ width:8px; height:8px; border-radius:999px; background:#e3e3e3; }
+.page-dot.active{ background:linear-gradient(90deg,var(--pos),var(--neg)); }
+/* アクション＆結果 */
+.actions{ display:flex; justify-content:center; gap:12px; margin:12px auto 24px; }
+#result-btn{ background:#000; color:#fff; padding:12px 20px; font-size:16px; border-radius:8px; border:none; cursor:pointer; }
+#result-btn[disabled]{ opacity:.48; cursor:not-allowed; }
+#loading{ display:none; font-size:14px; color:#666; align-self:center; }
+#result-panel{
+  opacity:0; transform:translateY(8px);
+  transition:opacity .3s ease, transform .3s ease;
+  display:none; background:#fff; box-shadow:var(--card-shadow);
+  border-radius:12px; padding:8px; margin:12px auto 60px; max-width:var(--container-max);
+}
+#result-panel.show{ display:block; opacity:1; transform:translateY(0); }
+#result-slot img{ display: block; max-width:65%; margin: 0 auto; border-radius:12px;}
+#result-slot h3{ margin:6px 0 6px; font-size:18px; }
+#result-slot p{ margin:0 0 40px; line-height:1.7; }
+.present_banner{width: 75%;}
+.cta-btn{ display:inline-block; color:#fff; border-radius:6px; text-decoration:none; font-weight:600; }
+.cta-btn img{max-width: 90% !important;}
+/* 進捗バー */
+.progress{background:#fff; padding:8px 0; z-index:5; box-shadow:0 1px 0 rgba(0,0,0,0.04); }
+.progress-inner{ max-width:var(--container-max); margin:0 auto; padding:0 6px; display:flex; gap:10px; align-items:center; }
+#progress-text{ font-size:12px; color:#666; text-align:right; }
+.progress-rail{ flex:1; height:6px; background:#eee; border-radius:999px; overflow:hidden; }
+#progress-bar{ height:100%; width:0%; background:linear-gradient(90deg,var(--pos),var(--neg)); }
+img, video { max-width: 100%; height: auto; }
+#result-title{
+    font-size: 24px;
+    text-align: center;
+}
+.match-job{
+  color: blue;
+  font-weight:bold;
+  display: block;
+  margin-top: 15px;
+}
+
+/* TODO 年齢区分版にも統合 */
+.match-type-name{
+    display: block;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+}
+@media (max-width: 600px){
+  .page{ padding:0 var(--gutter-mobile); max-width:calc(var(--container-max) + var(--gutter-mobile)*2); }
+  .question-text{ font-size:16px; }
+  .choices{
+    --gap:8px; --ring:-8px;
+    --row: calc(100% - (var(--gutter-mobile) * 2));
+    --dot: clamp(36px, calc((var(--row) - (var(--gap) * 5)) / 6), 64px);
+    padding:10px calc(8px + var(--ring)) 12px;
+    gap:var(--gap);
+  }
+    #result-slot p{
+        font-size: 14px;
+    }
+    #result-slot img{
+        max-width:70%;
+    }
+    .cta-btn img{max-width: 100% !important;}
+  .label{
+    font-size: 20px;
+    margin-top: 15px;
+  }
+  #result-title{
+    font-size: 20px;
+}
+.present_banner{width: 100%;}
+}
+/* aspect-ratio 非対応フォールバック */
+@supports not (aspect-ratio: 1 / 1) {
+  .choice-btn{ position:relative; height:calc(var(--dot) * var(--mult, 1)); }
+  .choice-btn::before{ content:""; display:block; padding-top:100%; }
+  .choice-btn > *{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+}
+.choices::-webkit-scrollbar{ height:8px; }
+.choices::-webkit-scrollbar-thumb{ background:rgba(0,0,0,0.08); border-radius:8px; }
+.label{
+  display:block;
+  text-align: center;
+  font-weight:700;
+  margin-top:25px;
+  margin-bottom:4px;
+  font-size: 22px;
+}
+.label--last{
+  font-size: 28px;
+  color: red;
+}
+.match-type{
+  width: 40%;
+  margin: 20px auto !important;
+}
+.label--personality{ color:var(--label-personality); }
+.label--love{ color:var(--label-love); }
+.label--match{ color:var(--label-match); }
+.label--tip{ color:var(--label-tip); } 
+</style>
+</head>
+<body>
+  <div class="page">
+    <!-- <h2>恋愛診断</h2> -->
+    <!-- <div class="hero"><img src="img/tekishokushindandayo.png" alt="恋愛診断" loading="lazy"></div> -->
+    <!-- 進捗バー -->
+    <div class="progress" aria-hidden="false">
+      <div class="progress-inner">
+        <div id="progress-text">0 / 20</div>
+        <div class="progress-rail"><div id="progress-bar"></div></div>
+      </div>
+    </div>
+    <div class="container">
+      <!-- ページング（上） -->
+      <div class="pager" aria-hidden="false">
+        <div class="left">
+          <button id="prev-page" class="pager-btn" type="button" disabled aria-disabled="true">前へ</button>
+        </div>
+        <div id="page-dots" class="page-dots" aria-label="ページ切り替えのドット"></div>
+        <div class="right">
+          <button id="next-page" class="pager-btn" type="button">次へ</button>
+        </div>
+      </div>
+      <div id="questions" aria-live="polite"></div>
+      <!-- ページング（下） -->
+      <div class="pager" aria-hidden="false">
+        <div class="left">
+          <button id="prev-page-bottom" class="pager-btn" type="button" disabled aria-disabled="true">前へ</button>
+        </div>
+        <div id="page-dots-bottom" class="page-dots" aria-label="ページ切り替えのドット（下）"></div>
+        <div class="right">
+          <button id="next-page-bottom" class="pager-btn" type="button">次へ</button>
+        </div>
+      </div>
+        <!-- 年齢入力（診断ボタン直前／1歳刻み） -->
+        <div class="age-field" style="max-width:var(--container-max); margin:8px auto 0;">
+        <label for="age-select" style="display:block; font-weight:700; text-align:center; margin-bottom:6px; margin-top: 20px;">
+            あなたの年齢を教えてください
+        </label>
+        <div style="display:flex; justify-content:center;">
+            <!-- optionsはJSで15〜80歳を自動生成します -->
+        <select id="age-select" aria-label="年齢" style="width:120px; padding:10px 12px; border:1px solid #e5e5e5; border-radius:8px; font:inherit;">
+        <option value="">選択</option>
+        </select>        
+        </div>
+        </div>
+      <div class="actions" aria-hidden="false">
+        <button id="result-btn" type="button" disabled aria-disabled="true">診断する</button>
+        <div id="loading" role="status" aria-live="polite">診断中...</div>
+      </div>
+      <section id="result-panel" aria-live="polite" aria-atomic="true">
+        <h2 id="result-title">結果</h2>
+        <div id="result-slot"></div>
+      </section>
+    </div>
+  </div>
+<script>
+(function(){
+  'use strict';
+  /* ページサイズ */
+  const PAGE_SIZE = 5; // 4〜5で調整可
+  /* 6段階の選択肢 */
+  const CHOICES = [
+    { key:"とても当てはまらない", value:-3, side:"neg", size:100 },
+    { key:"当てはまらない", value:-2, side:"neg", size:85 },
+    { key:"どちらかといえば当てはまらない", value:-1, side:"neg", size:70 },
+    { key:"どちらかといえば当てはまる", value:+1, side:"pos", size:70 },
+    { key:"当てはまる", value:+2, side:"pos", size:85 },
+    { key:"とても当てはまる", value:+3, side:"pos", size:100 }
+  ];
+  /* 恋愛向け 20問（ご提供の文） */
+  const ITEMS = [
+    { text:"人と仲良くなるとき、まず気持ちが大事だと思う。", pair:"P3", dir:+1 },
+    { text:"ケンカになったら、ちゃんと話して解決したい。", pair:"P3", dir:+1 },
+    { text:"見た目より、考え方や性格にひかれる。", pair:"P3", dir:+1 },
+    { text:"仕事・勉強よりも家族を大事にする", pair:"P4", dir:+1 },
+    { text:"デートではちょっとしたサプライズがうれしい。", pair:"P1", dir:+1 },
+    { text:"将来のことや深い話をするのが好きだ。", pair:"P1", dir:+1 },
+    { text:"ひとりの時間も大切にしたい。", pair:"P2", dir:+1 },
+    { text:"自分の気持ちをわかってほしいと思う。", pair:"P3", dir:+1 },
+    { text:"小さな気づかいや優しさがある人が好き。", pair:"P4", dir:+1 },
+    { text:"計画的で安定した関係が安心する。", pair:"P4", dir:+1 },
+    { text:"好きになると気持ちがすぐ盛り上がるほうだ。", pair:"P1", dir:+1 },
+    { text:"恋愛よりも勉強・仕事を優先したい", pair:"P2", dir:+1 },
+    { text:"心配なことは相手に話したくなる。", pair:"P4", dir:+1 },
+    { text:"うまくいっているとき、自分も成長してると感じる。", pair:"P1", dir:+1 },
+    { text:"言葉や行動で気持ちを見せてくれる人がいい。", pair:"P2", dir:+1 },
+    { text:"手をつないだりスキンシップが大事だと思う。", pair:"P2", dir:+1 },
+    { text:"新しいことに一緒に挑戦するのが好きだ。", pair:"P1", dir:+1 },
+    { text:"相手の気持ちがわかるとすごくうれしい。", pair:"P4", dir:+1 },
+    { text:"サプライズされるより、自分で計画するほうが好き。", pair:"P2", dir:+1 },
+    { text:"友だちのように何でも話せる関係がいい。", pair:"P3", dir:+1 }
+  ];
+
+  /* ===============================
+   年齢収集用 Googleフォーム設定
+   =============================== */
+const GF_FORM_ACTION_AGE = "https://docs.google.com/forms/u/6/d/e/1FAIpQLSfC35xDb6kWjIIrVdYSe7jcOxfyzWE55NP89PxlND_KndpNBw/formResponse"; // 先ほどのフォームURLを流用
+const ENTRY_AGE          = "entry.848286086"; // ← TODO: 年齢に対応するentry番号
+
+/* 年齢レンジ（必要に応じて調整OK） */
+const AGE_MIN = 6;
+const AGE_MAX = 80;
+
+/* サイレント送信用 hidden form + iframe（前回の関数名と同じでOK） */
+function postToGoogleFormSilent(actionUrl, fields){
+  try{
+    let sink = document.getElementById('gf_sink_iframe_age');
+    if(!sink){
+      sink = document.createElement('iframe');
+      sink.style.display = 'none';
+      sink.name = 'gf_sink_iframe_age';
+      sink.id   = 'gf_sink_iframe_age';
+      document.body.appendChild(sink);
+    }
+    const f = document.createElement('form');
+    f.action = actionUrl;
+    f.method = 'POST';
+    f.target = 'gf_sink_iframe_age';
+    f.style.display = 'none';
+
+    Object.keys(fields).forEach(name => {
+      const input = document.createElement('input');
+      input.type  = 'hidden';
+      input.name  = name;
+      input.value = fields[name];
+      f.appendChild(input);
+    });
+
+    document.body.appendChild(f);
+    f.submit();
+    setTimeout(()=> f.remove(), 1000);
+  }catch(_e){}
+}
+
+/* セレクトに 15〜80歳を自動生成 */
+function populateAgeSelect(){
+  const sel = document.getElementById('age-select');
+  if(!sel) return;
+  // 既存の最初の空optionは残し、以降を追加
+  for(let age = AGE_MIN; age <= AGE_MAX; age++){
+    const opt = document.createElement('option');
+    opt.value = String(age);
+    opt.textContent = `${age}歳`;
+    sel.appendChild(opt);
+  }
+}
+
+// 年齢が変更されたら活性状態を更新
+document.addEventListener('DOMContentLoaded', () => {
+  const ageSel = document.getElementById('age-select');
+  if (ageSel) {
+    ageSel.addEventListener('change', updateResultButtonState);
+  }
+  // 初期状態の再評価（セレクト生成直後に1回）
+  updateResultButtonState();
+});
+
+/* 初期化時に年齢プルダウンを生成 */
+document.addEventListener('DOMContentLoaded', populateAgeSelect);
+
+  /* === 参照デザインのハート形・色（OKLCH） === */
+  const HEART_PATH = "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
+  const HEART_COLORS = {
+    pos: { // そう思う側
+      base:  "oklch(0.718 0.202 349.761)",      // 選択時の塗り
+      stroke:"oklch(0.718 0.202 349.761)",      // 枠線色（常にこの色）
+      idle:  "white",                            // 非選択は白塗り
+      shadow:"oklch(0.718 0.202 349.761 / .35)" // 選択時ドロップシャドウ
+    },
+    neg: { // そう思わない側
+    base:  "oklch(0.55 0.15 145)",      // 明度を下げ、緑寄りに
+    stroke:"oklch(0.55 0.15 145)",
+    idle:  "white",
+    shadow:"oklch(0.55 0.15 145 / .35)"
+    }  
+};
+  /* タイプ表示の仮コンテンツ（差し替えOK） */
+const TYPE_CONTENT = {
+  1:{name:"バランスコアラ — MGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/9.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+バランスコアラは、穏やかで公平。誰とでも自然体で接し、対立や摩擦をうまく避けて場の空気をなめらかに整えるのが得意です。<br>
+目立つリーダータイプというよりは、「あの人がいるとなんか安心」「揉めごとも自然と収まる」――そんな“場を調整する存在”として信頼されています。<br>
+意見がぶつかったときも、冷静に双方の立場を聞いてちょうどいい落としどころを見つけたり、細かい不満をそのままにせず気づかれないようにケアしたり。<br>
+ただし、周りを優先しすぎるあまり、自分の不満や希望を後回しにしがちな面も。いつの間にか「調整役」でいること自体が“当たり前”になりやすいキャラです。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛でも相手への配慮が強く、「相手の希望を叶えてあげたい」「一緒にいて心地よくいてほしい」とつい尽くしがち。<br>
+そのため自分の気持ちや希望を抑えすぎて、後から“我慢してた”と気づくこともあります。<br>
+本当はもっと自分の気持ちも伝えたいし、必要なときには「こうしてほしい」と素直に言えるようになりたい――そんな葛藤も。<br>
+理想的な関係は「感謝」や「労い」をしっかり受け取れて、お互いのペースや役割を分かち合えることです。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">なじみカメレオン — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/11.jpg" alt="なじみカメレオン">
+コアラは自分の調整力を無理なく発揮でき、カメレオンは場に合わせて柔軟に動ける――<br>
+“頑張りすぎず、無理なく心地いい空気が続く”理想的な組み合わせです。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong>
+バランスコアラの強みは、「公平な判断力」「調整力」「場の空気を和らげる力」。<br>
+チームの意見をまとめる、みんなが気持ちよく動ける環境を作る役割で活躍します。
+<span class="match-job">・チームリーダー・プロジェクトマネージャー</span>
+意見がぶつかっても、冷静にまとめ役になれる。調整の軸になれるタイプ。<br>
+<span class="match-job">・総務・オフィス運営・コミュニティマネージャー</span>
+誰とでも偏りなく接し、場の空気を整え続けられる。<br>
+<span class="match-job">・カウンセラー・ファシリテーター・人事</span>
+人の話を聞き、バランスよく意見をまとめる力がそのまま活きる。<br>
+<span class="match-job">・教育・福祉・サポート職</span>
+多様なタイプが集まる現場で、衝突を防ぎながらみんなが安心できる雰囲気を作れる。<br>
+<span class="match-job">・カスタマーサクセス・クレーム対応・調整窓口</span>
+不満をためず、柔らかく吸収しながら現実的な着地点を探せる。`
+},
+  2:{name:"包み天使 — MGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/16.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+包み天使は、どんな人にもやわらかく寄り添える、包容力の高い癒し系タイプ。<br>
+相手の気持ちや悩みを自然に感じ取り、「大丈夫？」と声をかける前に、もうそばにいてくれる――そんな繊細な感受性があります。<br>
+言葉にしなくても、人の痛みや寂しさを察し、ただそばにいることで安心感を与えられるのが大きな強み。<br>
+一方で、困っている人を放っておけず、つい“自己犠牲”になりがちな面も。自分のことを後回しにして、相手に尽くしすぎてしまうこともあります。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛でも、包み天使はとても献身的。<br>
+相手のケアを何より大切にし、「好きな人には自分ができる限りのことをしてあげたい」という思いが強いです。<br>
+与えることで幸せを感じるタイプですが、“どこまでが自分・どこまでが相手”という境界線が曖昧になりやすく、<br>
+疲れてもそれを隠しがち。<br>
+本当は“頼ること”や“甘えること”も大切な愛情表現の一つと気づけると、より長く穏やかな関係が続きます。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">ふしぎチョウ — TSDW</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/15.jpg" alt="ふしぎチョウ">
+ふしぎチョウは個性的で、自分の世界観を大切にするタイプ。<br>
+包み天使は、ふしぎチョウの独特な価値観や感性を否定せず、やわらかく受け止めてあげられます。<br>
+ふしぎチョウも、天使の癒しと優しさに安心し、深い共感と信頼を感じる――<br>
+お互いの“違い”がそのまま「強い絆」に変わるペアです。<br>
+<strong class="label label--tip">向いている仕事</strong><br>
+包み天使の強みは、「共感力」「ケア・サポート力」「癒しと安心感を届けること」。<br>
+人やチームを優しく支える、感情を受け止める仕事で特に輝きます。
+<span class="match-job">・カウンセラー・心理職・福祉・医療系</span>
+人の気持ちや痛みに敏感で、そっと支えることができる。<br>
+<span class="match-job">・保育・教育・介護職</span>
+子どもや高齢者、困っている人に“安心”を届ける。<br>
+<span class="match-job">・接客・サービス業（ホテル・旅館・サロンなど）</span>
+お客様の小さな気持ちに気づき、癒しの空間を作ることが得意。<br>
+<span class="match-job">・クリエイティブ（絵本・エッセイ・ヒーリング系コンテンツ制作）</span>
+心に寄り添う作品やサービスを形にできる。<br>
+<span class="match-job">・チームのサポート役・バックオフィス</span>
+直接前に出るよりも、“縁の下の力持ち”としてみんなを支える役割で信頼される。`
+},
+  3:{name:"すっとりハト — MGDK",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/4.jpg",  desc:
+`<strong class="label label--personality">性格</strong>
+すっとりハトは、周りにいるだけで空気がやわらぎ、自然とみんなが安心できる存在です。<br>
+どんな場面でも落ち着きがあり、人の感情を敏感に感じ取ることができます。困っている人がいれば、そっと声をかけたり、誰かがピリピリしているときはさりげなく雰囲気を和らげたり――そんな受容力の高さがハトの魅力。<br>
+争いごとやギスギスした空気が苦手なので、みんなが心地よく過ごせる場をつくるのが得意。社交的でありながらも、強引に自分を主張したりはせず、一歩引いて全体のバランスを見ることができます。<br>
+外見や言動はとても穏やかだけれど、実は“冷静な決断力”も持っていて、いざというときは周囲に流されず自分の意見をしっかり伝えることもできます。<br>
+<strong class="label label--love">恋愛の性質</strong>
+すっとりハトは包容力があって、相手の気持ちに寄り添う恋愛が得意です。<br>
+どんなときも「分かち合い」を大切にし、二人で気持ちを共有することに安心を感じます。<br>
+ケンカやすれ違いが起きても、感情的にぶつかるよりも“冷静に話し合って解決”しようとするので、無駄な揉めごとになりにくいのも特徴です。<br><br>
+ドラマチックな駆け引きや激しい感情の波には少し苦手意識がありますが、そのぶん落ち着きや安定感を求める人にはとても信頼されやすいタイプです。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">舞台チョウ — TSZW</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/3.jpg" alt="舞台チョウ">
+舞台チョウの情熱的な表現や明るさを、すっとりハトはまっすぐ受け止めてあげられる包容力があります。<br>
+舞台チョウにとっては、ハトの落ち着きや穏やかさが“安心できる居場所”となり、素直な自分を出しやすくなります。<br>
+一方で、ハトは舞台チョウの明るさやエネルギーに元気をもらい、自分の新しい面を発見できることも。<br>
+お互いの違いを尊重し合いながら、バランスよく支え合える理想的なコンビです。<br>
+<strong class="label label--tip">向いている仕事</strong><br>
+すっとりハトの強みは、「調和をつくる力」「受容力」「冷静な判断力」「社交性と気配り」。<br>
+人と人の間をつなぐ・安心を届ける・サポートする仕事で、自然と信頼を集めます。
+<span class="match-job">・人事・総務・オフィス運営</span>
+社員やメンバーが安心して働ける環境づくり、相談やトラブル対応などに向いています。<br>
+<span class="match-job">・カスタマーサクセス／サポート／受付</span>
+困っている人や不安な人にやさしく寄り添い、冷静に解決策を提示できる。<br>
+<span class="match-job">・コミュニティマネージャー／イベント運営</span>
+場の雰囲気を柔らかくし、さまざまなタイプの人が居心地よく過ごせる工夫ができる。<br>
+<span class="match-job">・ファシリテーター／コーディネーター</span>
+チームやプロジェクトの意見をまとめ、争いを防ぎながら目標に導くことが得意。<br>
+<span class="match-job">・医療・福祉・教育系のサポート職</span>
+安心感と受容力を武器に、患者さんや子ども・ご家族など、多様な人と信頼関係を築ける。`
+},
+  4:{name:"なじみカメレオン — MGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/11.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+なじみカメレオンは、とにかく“器用で適応力が高い”のが最大の特徴です。<br>
+新しい環境やメンバー、急な変化にもすっと溶け込み、違和感なく馴染んでしまう——そんな天性の柔軟さと気配りを持っています。<br>
+人間関係を円滑にする才能があり、困っている人や空気が重くなった場面でも、さりげなく雰囲気を和らげるのが得意です。<br>
+ただその一方で、周囲に合わせすぎて自分の本音や「本当にやりたいこと」を見失いやすい一面も。<br>
+「なんとなくうまくやっているうちに、ふと“自分らしさ”がわからなくなる…」そんな瞬間があるかもしれません。<br>
+でも、その“合わせる力”があるからこそ、どんな人とも自然体で付き合え、いろんな場で活躍できる稀有な存在です。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛でも、相手の好みに合わせて雰囲気やペースを調整し、気まずい空気やギクシャクを上手に避ける“空気読み”タイプ。<br>
+相手が楽しくいられるように尽くしたり、場を盛り上げたりすることに幸せを感じます。<br>
+でも、自分ばかりが合わせすぎて疲れたり、気づいたら「本当は自分はどうしたい？」が分からなくなることも。<br>
+成長とともに、「自分の本音」や「こうしてほしい」をきちんと伝えられるようになると、恋愛がどんどん成熟していきます。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">バランスコアラ — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/9.jpg" alt="バランスコアラ">
+バランスコアラは、コアラの落ち着いた安定感で、なじみカメレオンに“安心していられる場所”を与えてくれます。<br>
+コアラの公平さと、カメレオンの柔軟さがうまく噛み合い、無理なく、気を張らずに長く続く心地よい関係に。<br>
+コアラの「場をまとめる力」とカメレオンの「空気を和らげる力」が合わさることで、どんな場所でも“摩擦なく、自然体”でいられます。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong>
+なじみカメレオンの強みは、「適応力」「気配り」「空気を読むセンス」「円滑な人間関係をつくる調整力」。<br>
+変化の多い環境や、複数の人をつなぐ・調整する役割でとても活きます。
+<span class="match-job">・カスタマーサクセス・営業・接客</span>
+相手ごとに雰囲気や話し方を変えて信頼を築ける。<br>
+<span class="match-job">・プロジェクトコーディネーター・サブリーダー・チームの潤滑油役</span>
+グループや部署の違いを越えて、誰とでも自然体で関われる。<br>
+<span class="match-job">・イベント運営・コミュニティ管理</span>
+現場の空気や参加者の温度感を敏感にキャッチし、円滑に進行。<br>
+<span class="match-job">・クリエイティブ・企画・編集（多様な案件・人と関わる仕事）</span>
+状況に応じて臨機応変にアイデアや手法を変えられる。<br>
+<span class="match-job">・教育・サポート・ヘルプデスク</span>
+相手のタイプや状況に応じてサポートスタイルを柔軟に切り替えられる。`
+},
+  5:{name:"まごころ犬 — MGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/12.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+まごころ犬は、真面目で義理堅く、「約束は絶対に守る」タイプ。<br>
+言葉や態度は穏やかで控えめですが、内側には強い芯と責任感を持っています。<br>
+安定志向が強く、日々の習慣やルールを大切にしながら、コツコツと信頼を積み重ねていくことが得意。<br>
+派手さや器用さよりも、「誠実にやり続ける」ことに自分の価値を見出している人です。<br>
+困っている人を放っておけず、小さな約束でも忘れずに行動する“信頼される相棒”になれます。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛でも「一途で誠実」がいちばんの魅力。自分から派手なアプローチや甘い言葉を投げるタイプではありませんが、日々の行動や小さな気配り、約束を守ることで“本気の気持ち”を示します。<br>
+浮気心はほとんどなく、一度決めた相手をずっと大事にするので、「安定した関係」を求めるパートナーと特に相性抜群。<br>
+ただ、感謝や好意を言葉にするのは少し苦手な面もあるので、パートナーが「ありがとう」「嬉しい」と素直に伝えてくれると、さらに安心して関係を続けられます。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">守護ライオン — TGZK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/10.jpg" alt="守護ライオン">
+守護ライオンは「守る」ことで愛情を示し、まごころ犬は「誠実さと責任感」で応える。<br>
+ライオンが与える大きな安心と、犬のまっすぐな信頼・義理堅さが、お互いの“良さ”を高め合い、自然と支え合える最強コンビ。<br>
+日常の中で積み重ねる信頼感と、目に見えない思いやりがずっと続く関係です。<br>
+<strong class="label label--tip">向いている仕事</strong>
+まごころ犬の強みは「誠実さ」「継続力」「信頼されやすい安定感」「サポート力」。<br>
+コツコツ型・“縁の下の力持ち”として、人や組織を支える役割で活躍できます。
+<span class="match-job">・事務・管理・バックオフィス系</span>
+同じ仕事を正確に、丁寧に続ける力が求められる職場で信頼される。<br>
+<span class="match-job">・カスタマーサポート・クレーム対応</span>
+真面目な対応と責任感、約束を守る姿勢で、お客様からの信頼を得やすい。<br>
+<span class="match-job">・教育・保育・介護・医療系</span>
+ルールやマナーを守りながら、コツコツと人を支える仕事が向いている。<br>
+<span class="match-job">・現場サポート・物流・製造・警備系</span>
+安定志向で、任された仕事を丁寧にやり抜く継続力が強み。<br>
+<span class="match-job">・人事・総務・労務管理</span>
+公正さと信頼を求められる役割で、誠実な人柄が活かせる。`
+},
+  6:{name:"黒猫ボス — TGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/1.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+黒猫ボスは、どんな時も落ち着いていて、周りの空気をやわらかくしてくれる存在です。自分のペースを大切にしていて、あわてず騒がず、自然体。その落ち着いた雰囲気に、みんなが安心できる瞬間がたくさんあります。<br>
+見た目はちょっとクールで近寄りがたそうに見えるけれど、実はとても繊細で思いやりのある心を持っています。急に距離を縮められると少しびっくりしてしまうこともあるけれど、信頼できる相手には、言葉にしなくても静かに力を貸してくれます。<br>「頼りになる」と思われても、本人はあくまで自然体。見返りを求めないやさしさが魅力です。<br>
+<strong class="label label--love">恋愛の性質</strong>
+黒猫ボスは、言葉よりも行動で想いを伝えるタイプです。 「好き」や「大切」という気持ちを、さりげない気遣いや静かなサポートで表現します。<br>たとえば、相手の体調や気分をそっと気にかけたり、困っている時にはそばにいてあげたり。そんなふうに、普段はあまり表に出さないやさしさが、ふとした瞬間に伝わることが多いです。
+自分から甘えるのはちょっぴり苦手。でも、受け止めてくれる相手がそばにいれば、少しずつ素の自分を見せてくれるようになります。信頼をとても大切にしているので、裏切りや嘘には敏感。<br>
+急がず、ゆっくりと心の距離を縮めていくことで、穏やかで温かい関係が育っていきます。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">ひだまりウサギ — MSDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/2.jpg" alt="ひだまりウサギ">
+ひだまりウサギの自然な安心感は、黒猫ボスの心をふんわりとほぐしてくれます。<br>
+黒猫ボスの落ち着きやさりげない優しさは、ひだまりウサギに安心とぬくもりを与えてくれる。お互いに頑張りすぎなくても、ただ一緒にいるだけで「大丈夫」と思える、そんな補い合える関係です。<br>
+<strong class="label label--tip">向いている仕事</strong>
+黒猫ボスの魅力は、静かでやさしい安心感、冷静な判断力、人の小さな変化にも気づく繊細さ。
+どんな場面でも「大丈夫だよ」とそっと寄り添えるから、こんなお仕事がぴったりです。
+<span class="match-job">・サポート・カウンセリング系</span>
+誰かが困っているとき、静かに話を聞いて受け止めてあげられる。寄り添う力が、人の役に立ちます。<br>
+<span class="match-job">・プロジェクトマネージャーやチームリーダー</span>
+周りがバタバタしても、ひとりだけ落ち着いて冷静に判断できる。みんなの心の拠り所になれる存在。<br>
+<span class="match-job">・編集やクリエイティブ系</span>
+物事の細部や、人の気持ちの機微に気づけるから、良いコンテンツやアイデアを生み出せます。`},
+
+  7:{name:"影の執事 — MGDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/8.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+影の執事は、目立つことなく、静かに周囲を支える裏方タイプ。
+場の状況や人の気持ちを冷静に観察し、誰よりも先に“必要なこと”に気づいて動ける抜群の観察力が持ち味です。<br>
+効率と秩序を重視し、「どうしたら全体がスムーズに回るか」「誰が何を必要としているか」を考えて動くことが自然にできる人。
+感情は控えめで、あまり表には出さないけれど、実はとても深い思いやりがあり、相手の安心や快適さのために自分の時間や労力を惜しみません。
+「誰かの役に立つ」「支えることで全体を良くする」ことに強いやりがいと誇りを感じています。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛においても“控えめな献身”が特徴です。
+ロマンチックなサプライズや派手な愛情表現は苦手ですが、日々の生活を整えたり、さりげなく相手の負担を減らしたり――
+“相手の安心”を最優先に、当たり前のようにサポートします。
+自分の感情を大きくアピールすることは少ないけれど、本気で大切に思った人には地道に誠実に寄り添い続けます。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">白シャツ先輩 — TGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/7.jpg" alt="白シャツ先輩">
+白シャツ先輩とは、「合理性」と「誠実さ」で信頼し合える関係。
+先輩のリーダーシップや現実的な計画性に、執事の細やかなサポートと観察力が加わることで、日常も仕事もスムーズに回ります。
+お互いに役割分担をはっきりさせて任せ合い、必要な時だけ静かに寄り添う――
+そんな“安定感と信頼”がベースの、実務面でもプライベートでもシナジー抜群のコンビです。<br>
+<strong class="label label--tip">向いている仕事</strong><br>
+影の執事の強みは、「観察力」「合理性」「裏方としての支え力」「効率化」「さりげない思いやり」。
+“目立たないけど不可欠な存在”として、チームや組織の土台を作る役割で輝きます。
+<span class="match-job">・事務・総務・バックオフィス全般</span>
+組織や現場をスムーズに回すための調整役として頼られる。<br>
+<span class="match-job">・秘書・アシスタント・カスタマーサポート</span>
+表に出すぎず、でも必要な時には迅速かつ的確にサポート。<br>
+<span class="match-job">・システム運用・管理・インフラ系</span>
+“表には見えない”トラブルや課題を静かに解決し、全体を支える。<br>
+<span class="match-job">・現場マネジメント・業務効率化・管理系</span>
+全体の流れや業務の無駄を見抜き、現実的な改善策を提案・実行。<br>
+<span class="match-job">・教育・研修の裏方運営や、ファシリテーション</span>
+主役を支え、みんなが気持ちよく動ける環境を整える仕事。`
+},
+  8:{name:"ふしぎチョウ — TSDW",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/15.jpg",  desc:
+`<strong class="label label--personality">性格</strong>
+ふしぎチョウは、誰にも真似できない個性と、どこかミステリアスな雰囲気が特徴。<br>
+「なんでそんな発想が？」と思われるような独特のアイデアや、型にとらわれない生き方で、自然と周囲の視線を集めることも少なくありません。<br>
+人から観察されることや、自分だけの世界観を持つことを楽しめる“自分ペース型”。<br>
+集団のルールや空気に流されず、「自分が本当に良いと思えること」に集中できる芯の強さもあります。<br>
+ただし、自分の世界を守るために、時に他人との距離を置いたり、急な干渉を苦手と感じることも。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛でも「自由」と「尊重」を大切にし、相手に依存されたり、過度に束縛されることは苦手。<br>
+派手な愛情表現よりも、“静かに深く愛を育てていく”のがふしぎチョウ流。<br>
+自分の時間やペースを大事にしつつ、心の底では「本当に理解し合える関係」を求めています。<br>
+相手にも“自分の人生をしっかり持っていること”“独立した個としての強さ”を求めがち。<br>
+価値観やこだわりが合えば、言葉にしなくても深い絆を感じられるタイプです。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">包み天使 — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/16.jpg" alt="包み天使">
+包み天使は、やわらかく優しい癒しの存在。<br>
+ふしぎチョウが持つ独特さや“ちょっと変わった部分”も、安心してさらけ出せる土壌を作ってくれます。<br>
+ふしぎチョウもまた、包み天使に静かで深い共感を返し、お互いの違いを尊重しながら自然体でいられる理想のペアです。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong>
+ふしぎチョウの強みは、「独創性」「個性的な発想」「自分の世界観を作る力」「自由なスタンス」。<br>
+一つのやり方に縛られず、新しい価値や表現を生み出すクリエイティブな場で輝きます。
+<span class="match-job">・クリエイター・アーティスト・デザイナー</span>
+自分の世界観や個性を活かし、独自の表現で新しいものを生み出す。<br>
+<span class="match-job">・研究・企画開発・リサーチ職</span>
+常識や既存の枠にとらわれず、新しい切り口やアイデアを探求する。<br>
+<span class="match-job">・執筆・編集・メディア系（コラム、評論など）</span>
+独自視点で情報や価値観を発信する役割が向いている。<br>
+<span class="match-job">・フリーランス・独立系ワーク</span>
+集団よりも、自分の裁量でペースを守れる環境で真価を発揮。<br>
+<span class="match-job">・心理・コンサル・アートセラピー系</span>
+表現や発想の幅広さを活かし、人の心や社会に新しい視点を与える。<br>`
+},
+  9:{name:"白シャツ先輩 — TGDK",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/7.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+白シャツ先輩は、いつも落ち着いていて理性的。
+ 状況を冷静に見極め、感情に流されずに判断できるバランス感覚の持ち主です。
+ 周囲からは「頼りになる」「何かあったときはあの人に相談すれば大丈夫」と思われていることが多く、自然とリーダーやまとめ役を任されることが多いでしょう。<br>
+感情表現は節度を持っていて、嬉しい時も落ち込んだ時も、感情的になりすぎず安定しています。
+ 責任感が強く、やると決めたことは最後までやり抜く力があり、細かなところまで気を配る誠実さも特徴です。
+ 自分が前に出すぎることはなく、誰かのために静かにサポートに回れる“懐の深さ”も持っています。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛においても白シャツ先輩は、とても慎重で誠実。
+ 一時の感情で動くより、相手との信頼関係をじっくりと育てていくタイプです。
+ 「好き」と言葉で伝えるよりも、約束を守ったり、必要なときにさりげなく助けたり、行動で思いを示します。<br>
+パートナーと将来のことや生活について話すときは、現実的で具体的。
+ お互いの役割や計画をしっかり共有することで、安心して長い関係を築いていくことができます。
+ 相手を“育てるように”見守りながら、対等なパートナーとして支え合いたいと考える一面もあります。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">影の執事 — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/8.jpg" alt="影の執事">
+影の執事は、表に出すぎず、裏方でそっと先輩を支えることが得意。
+白シャツ先輩の理性や合理性と、執事のきめ細やかな気遣いが見事に噛み合い、お互いが信頼して役割を任せ合える理想的な関係が築けます。
+先輩は執事の存在に安心し、執事は先輩のリーダーシップに誇りを持てる――そんな信頼で結ばれるペアです。<br>
+<strong class="label label--tip">向いている仕事</strong>
+白シャツ先輩の強みは、「責任感」「理性」「信頼感」「調整力」。
+人や組織をまとめる・支える役割で力を発揮します。
+<span class="match-job">・管理職・マネージャー・プロジェクトリーダー</span>
+状況を冷静に見極め、的確な判断でメンバーを導ける。<br>
+<span class="match-job">・教育・研修・メンター職</span>
+相手を育てる視点や長期的な信頼構築が活きる。<br>
+<span class="match-job">・人事・総務・組織運営</span>
+責任を持ってサポート・調整する役割に適性大。<br>
+<span class="match-job">・法務・経理・コンサルティング</span>
+理性や客観的判断、計画力が求められる専門職にもフィット。<br>
+<span class="match-job">・顧客対応・カスタマーサクセス（リーダー層）</span>
+冷静な判断と誠実な対応で、周囲から厚い信頼を得やすい。`
+},
+  10:{name:"守護ライオン — TGZK",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/10.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+守護ライオンは、まわりを温かく包み込み、安心させてくれる“頼れる兄貴分”タイプ。<br>
+普段はどっしり落ち着いていて寛容ですが、いざという時は迷いなく動き、みんなを守る責任感と行動力が光ります。ピンチやトラブルでこそ真価を発揮し、「この人がいるから大丈夫」と思わせる頼もしさが最大の強みです。<br>
+一方で、相手のことを思うあまり、つい“過保護”になったり、相手の自由や挑戦を無意識に制限してしまう場面も。でもその根底には、**「大切な人には安全で幸せでいてほしい」**という純粋な想いがあります。<br>
+<strong class="label label--love">恋愛の性質</strong>
+守護ライオンの恋愛は「守ること」に全力。<br>
+パートナーが困っていたり、傷つきそうな時は、言葉より先に行動で守ろうとします。相手の安心や幸福を一番に考えるからこそ、「ちゃんと食べてる？」「困ってない？」と世話を焼いたり、トラブルや不安を先回りして取り除いてしまう…そんな愛情表現が特徴です。<br>
+ただし、守りすぎて相手の自由や成長の機会を奪わないよう、「どこまで守るか」や「一人の時間・挑戦も大事にする」というルールを一緒に考えることも大切です。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">まごころ犬 — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/12.jpg" alt="まごころ犬">
+まごころ犬は、誠実で素直に気持ちを伝えられるタイプ。ライオンは犬のまっすぐな信頼や感謝で「守ってあげてよかった」と感じ、犬はライオンの大きな安心感に“守られている”幸せを感じられます。<br>
+お互いの“補完関係”がとても強く、信頼と安心がずっと続く理想のパートナー。<br>
+<strong class="label label--tip">向いている仕事</strong>
+守護ライオンの強みは「包容力」「責任感」「ピンチに強い判断力と行動力」。人やチームを支える・守る・安心を提供する役割で抜群の存在感を発揮します。
+<span class="match-job">・リーダー・マネージャー・現場統括</span>
+緊急時やトラブル発生時でも頼られる安定感と決断力が活きる。<br>
+<span class="match-job">・人事・教育・サポート業務</span>
+新人や部下の成長を見守り、困った時に必ずサポートできる信頼感。<br>
+<span class="match-job">・カスタマーサクセス・クレーム対応</span>
+困っている人を放っておけず、状況を解決に導く力。<br>
+<span class="match-job">・警備・防災・医療・福祉系（守る・安心を届ける仕事）</span>
+周囲の安心や安全を確保する役割で評価される。<br>
+<span class="match-job">・社会福祉分野</span>
+困っている人や社会課題に向き合い、“守る”ことにやりがいを感じられる。`
+},
+  11:{name:"ピョンパワー — TSZW", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/14.jpg",desc:
+`<strong class="label label--personality">性格</strong>
+ピョンパワー（ハッピーカエル）は、どんな時もエネルギッシュで前向き。「やってみよう！」「大丈夫！」と自然に声をかけ、場を一気に盛り上げるムードメーカーです。<br>
+元気がない人がいたら、じっとしていられず思わず巻き込んでしまう…そんな太陽みたいな存在。考えるよりまず行動！な勢いがあり、細かいことより「今を楽しむ」ポジティブさでまわりに元気を届けます。<br>
+一方で、勢いあまって突っ走りすぎてしまうことや、大事な場面で空回りすることも。でも失敗してもすぐ立ち直り、次の“楽しいこと”に切り替えられる柔軟さも魅力です。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛もとことんアクティブで、じっとしているよりは一緒に体験したり、動き回るデートを好みます。サプライズやイベント、ちょっと変わった体験で距離が縮まるタイプ。<br>
+「じっくり語り合うより、一緒に楽しみながら仲良くなる」スタイルで、相手も巻き込みながら自然と関係が深まります。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">ずるかわキツネ — TSZW</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/13.jpg" alt="ずるかわキツネ">
+ずるかわキツネの戦略や遊び心と、ピョンパワーの実行力・勢いが合わさると、どんなことも楽しく実現できる“最強のコンビ”。キツネが仕掛け役、カエルが実行役として、お互いの得意分野を活かして“楽しい時間”や“大きな成果”を作り出せます。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong>
+ピョンパワーの強みは、「前向きさ」「行動力」「ムードを盛り上げる力」「みんなを巻き込むパワー」。動きが多い・勢いが求められる現場や、人を元気にできる役割で特に活躍します。
+<span class="match-job">・営業・イベント企画・広報・PR</span>
+盛り上げ役として人を巻き込み、場を活性化する力が武器。<br>
+<span class="match-job">・接客・サービス業・観光・レジャー</span>
+エネルギッシュな接客や、明るさを活かしてお客様の印象に残る。<br>
+<span class="match-job">・スポーツ・レジャーインストラクター</span>
+チームや生徒を元気づけてやる気を引き出す役割にピッタリ。<br>
+<span class="match-job">・教育・保育・子ども向け事業</span>
+明るさや行動力で子どもたちを巻き込み、場を盛り上げるのが得意。<br>
+<span class="match-job">・ベンチャー企業やスタートアップ</span>
+新しいことに積極的に挑戦し、失敗を恐れずどんどん行動できる。`
+},
+  12:{name:"ぬすっとウサギ — MSZW",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/6.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+ぬすっとウサギは、どこにいても場をぱっと明るくしてしまう、愛嬌たっぷりの存在です。みんながちょっと退屈そうなときも、絶妙なタイミングで話題をふったり、盛り上げたり。自分も周りも楽しませることが得意です。<br>
+チャンスをしっかり掴む“ちゃっかりさ”も特徴で、「これだ！」と思ったら即行動。人を巻き込んでうまくいかせる器用さも持っています。でもその裏には、“誰かと一緒にいる安心感”や、“人と楽しい時間を共有したい”という純粋な思いもちゃんとあります。<br>
+甘え上手で、人に頼ることも得意。でも「本当に大切な場面」では、自然に誠実さや思いやりも見せられるタイプです。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛では、気軽なアプローチや楽しいやりとりを大切にします。<br>
+一緒にいて笑い合えたり、日常のちょっとしたハプニングを二人で楽しめる関係が理想。<br>
+ただ、相手から“もっと深い話”や“本気の気持ち”を求められたときは、いつもの軽やかさから一転して、まっすぐ誠実に向き合える強さもあります。<br>
+「ちゃっかりしているようで、本当はちゃんと人のことを考えている」――そんな一面が、恋愛でも自然と伝わります。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">照れ狼（ツン狼） — TGZK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/5.jpg" alt="照れ狼">
+照れ狼の不器用さや照れくささも、ぬすっとウサギの明るさと愛嬌で自然に溶かしてしまいます。<br>
+ウサギの「みんなで楽しく」の空気に、狼も次第に心を開きやすく、守ってあげたい気持ちがどんどん強くなります。<br>
+逆に、狼のまっすぐな誠実さや安定感が、ウサギにとっては「ちゃんと本音で向き合ってくれる」大きな安心感に。<br>
+“盛り上げる明るさ”と“静かに守る力”、お互いの強みを引き出し合えるベストな組み合わせです。<br>
+<strong class="label label--tip">向いている仕事</strong>
+ぬすっとウサギの強みは、「愛嬌・頭の回転の早さ」「人を巻き込む力」「楽しさを生み出すセンス」。<br>
+“みんなで盛り上げる”場や、“アイデアや動きを求められる”仕事で輝きます。
+<span class="match-job">・営業・イベント企画・広報PR</span>
+盛り上げ役やムードメーカーとしてチームの雰囲気を上げ、チャンスも逃さずキャッチ！<br>
+<span class="match-job">・コミュニティ運営・SNS運用・インフルエンサー</span>
+“巻き込み力”と“発信力”がそのまま武器に。<br>
+<span class="match-job">・サービス業・接客・観光・レジャー</span>
+「その場その場で機転を利かせる」「人と楽しく関わる」仕事で存在感を発揮。<br>
+<span class="match-job">・クリエイティブ職（企画・コピー・デザイン）</span>
+「ちょっと面白い」「誰も気づかなかったアイデア」を生み出すセンスが光る。<br>
+<span class="match-job">・チームリーダーやサブリーダー</span>
+現場の空気を読んで調整役になったり、みんなの意見を巻き込んでまとめる役割も得意。`
+},
+  13:{name:"照れ狼（ツン狼） — TGZK",img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/5.jpg", desc:
+`<strong class="label label--personality">性格</strong>
+照れ狼は、普段は強気な態度や派手な言動で自分を大きく見せがち。でも実は、とても照れ屋で、人一倍仲間想いの熱い心を持っています。<br>
+本当の感情や優しさを素直に表現するのが苦手で、ちょっと不器用なところも。でも、信頼できる相手の前では、ふとした瞬間に“デレ”が見えたり、さりげない世話や行動で想いを伝えてくれます。<br>
+<strong class="label label--love">恋愛の性質</strong>
+言葉では素直になれず、つい照れ隠しをしてしまうことが多い照れ狼。でも、その分“行動”で好意を示してくれるのが特徴です。困っているときにさりげなく手を差し伸べてくれたり、無口だけど自分のために動いてくれたり。<br>
+嫉妬しても相手にはバレないように平静を装うけれど、実はリアクションや反応を常にチェックしています。相手からの「ありがとう」や、ちょっとしたリアクションに弱く、「見てくれているんだ」と実感できると、心の壁が少しずつ下がっていきます。<br>
+素直に甘えられない分、「気づいてくれて、受け止めてくれる」人との相性が抜群です。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">ぬすっとウサギ — MSZW</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/6.jpg" alt="ぬすっとウサギ">
+ぬすっとウサギは、柔らかくて親しみやすい雰囲気で、照れ狼の“照れ”や不器用さを上手に受け止めてくれる存在。ウサギの自然な甘えや愛嬌が、狼のガードを少しずつほどき、本当の優しさや守りたい気持ちを引き出してくれます。<br>
+お互いが無理なく、自分らしくいられる安心のパートナーです。<br>
+<strong class="label label--tip">向いている仕事</strong>
+照れ狼の強みは、「責任感」「情熱」「守る力」「行動力」と「本音を大切にする誠実さ」。<br>
+大勢の前で目立つより、“少人数のチームや大切な人のために本気になれる”環境でこそ輝きます。
+<span class="match-job">・営業やサービス業（頼れる先輩・相談役ポジション）</span>
+困っている人を放っておけず、陰ながらサポートできる。世話焼きな性格が活きる。<br>
+<span class="match-job">・現場系リーダー／現場監督・職人チームリーダー</span>
+自分の責任範囲をしっかり守り、仲間をまとめる力が評価される。<br>
+<span class="match-job">・IT・エンジニア・クリエイティブ職（少人数チーム）</span>
+コツコツ地道に支える・守る仕事や、チームで成果を出すポジションが向いている。<br>
+<span class="match-job">・スポーツ・アスリート系</span>
+負けず嫌いな情熱と仲間を大切にする気持ちが活きる。<br>
+<span class="match-job">・イベント運営・警備・サポートスタッフ</span>
+トラブル時の冷静な行動や、さりげない気配りで信頼を集めやすい。`
+},
+14:{name:"ひだまりウサギ — MSDK", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/2.jpg",desc:
+`<strong class="label label--personality">性格</strong>
+ひだまりウサギは、そっとそこにいるだけで周りの空気をやわらかくする、ふんわり優しい存在。天然で少しのんびりしたところもあるけれど、相手の小さな変化や気持ちにはすぐに気づける、誠実な心の持ち主です。自分から前に出るタイプではないけれど、誰かの役に立ちたい気持ちが強く、目立たないところで気配りを続ける。そんなやさしさが、自然と周囲の信頼につながっています。<br>
+ただ、その分、ちょっと傷つきやすい一面も。不安やさみしさを感じやすいからこそ、「安心できる場所」や「自分を受け止めてくれる人」を求めてしまうところがあります。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛になると、ひだまりウサギは相手のために一生懸命。甘え上手で、ちょっとしたことでも「ありがとう」と素直に伝えられるので、一緒にいる人も「守ってあげたい」と感じやすいです。小さな気遣いを受け取ったときに一番うれしそうな顔を見せたり、好きな人に尽くすこと自体が幸せだったり。喧嘩したときは、ただ謝られるよりも「うん、つらかったね」と共感してもらえることで心がほっとします。<br>
+気持ちを言葉でフォローしてもらえると安心できる、そんなやわらかな恋愛スタイルです。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">黒猫ボス — TGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/1.jpg" alt="黒猫ボス">
+黒猫ボスの落ち着きとやさしさは、ひだまりウサギの不安をしっかり包み込んでくれる大きな安心感になります。<br>
+一方、ひだまりウサギの「ありのままでいいよ」という自然な受容の雰囲気は、黒猫ボスの心をやわらかくほどき、ゆっくりと近づくきっかけに。お互いに頑張りすぎず、無理せず、ふたりでいる時間がほっとする――そんなあたたかい補完関係です。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong><br>
+ひだまりウサギの良さは、「人の気持ちを自然に察して寄り添える」「場の空気を明るくできる」「小さな気配りができる」ところ。目立つポジションよりも、誰かをサポートしたり、雰囲気を良くしたりする役割が得意です。
+<span class="match-job">・保育・介護・教育など、人に寄り添う仕事</span>
+子どもやお年寄り、悩みを抱える人に、やさしく寄り添って安心を届ける力があります。<br>
+<span class="match-job">・カスタマーサポート／受付・サービス系</span>
+誰かのちょっとした不安や困りごとに気づいて、やさしく声をかけられる。感謝される場面が多い仕事が向いています。<br>
+<span class="match-job">・チームサポートやアシスタント職</span>
+リーダーを立てて、影から支えたり、みんなが過ごしやすい雰囲気を作る役回りが得意です。<br>
+<span class="match-job">・イベント・コミュニティ運営</span>
+周囲の空気を和ませる力が活きる。裏方やサポート役でも、気配りで場を明るくできます。<br>
+<span class="match-job">・クリエイティブ・企画サポート</span>
+自分の感性や優しさを、アイデアや作品づくりに活かして、チームの雰囲気をあたたかくできます。`
+},
+  15:{name:"ずるかわキツネ — TSZW", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/13.jpg",desc:
+`<strong class="label label--personality">性格</strong>
+ずるかわキツネは、機転が利いて頭の回転が速く、愛嬌と狡猾さを絶妙に使い分けるタイプ。場の空気を読む力や「今どう動けば一番得か？」を瞬時に見抜くセンスはピカイチで、難しい話や気まずい場面も、ちょっとしたジョークや仕草でうまくまとめてしまいます。人を巻き込むのがとても上手で、チャンスや楽しそうなことは絶対に逃しません。<br>
+ただし、駆け引きがすぎるときや、気分屋に見られることも…。そんな一面も「この人ならしょうがないか」と思わせてしまう、不思議な魅力があります。
+本気になると意外なほど一途で、“表面はずるかわ・中身は実はピュア”というギャップも、周囲を惹きつける理由の一つです。<br>
+<strong class="label label--love">恋愛の性質</strong>
+恋愛は“ゲーム感覚”で楽しむ部分もあり、軽やかなやりとりや駆け引きが得意です。でも心の奥では、本当に好きになった相手にはまっすぐで一途。<br>
+普段は相手の反応を観察し、最適なアクションをとりながら距離を縮めていきますが、自分が本気だと気づいたときは、途端にブレなくなるのがキツネらしいところ。<br>
+駆け引きのしすぎや、“本音が伝わりにくい”のが弱点ですが、素直に気持ちを伝えた時の誠実さには、強い説得力があります。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">ピョンパワー — TSZW</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/14.jpg" alt="ピョンパワー">
+ピョンパワーは、行動力と勢いで場を盛り上げるタイプ。キツネの戦略やタイミングの良さと合わさると、「計画＋勢い」で楽しいことや大きな成果を生み出しやすい理想のペア。<br>
+キツネの遊び心や計算高さをピョンパワーが受け止め、ピョンの直感や勢いをキツネが計画的に活かせる“ベストコンビ”です。<br>
+<strong class="label label--tip">向いている仕事・活かせる職場</strong><br>
+ずるかわキツネの強みは、「頭の回転の速さ」「場を盛り上げる愛嬌」「チャンスをつかむ戦略性」「巻き込み力」。<br>
+変化や駆け引きが多い仕事、“結果が求められる”環境や、“交渉・仕掛ける”役割で活躍します。
+<span class="match-job">・企画・マーケティング・プロモーション</span>
+瞬時に状況を読み、話題やトレンドを仕掛けるのが得意。<br>
+<span class="match-job">・営業・ビジネスディベロップメント・交渉役</span>
+駆け引きやタイミング感覚を活かして、成果につなげる力が強い。<br>
+<span class="match-job">・イベント・エンタメ・PR業界</span>
+盛り上げ役・ムードメーカー・仕掛け人として存在感抜群。<br>
+<span class="match-job">・SNS運用・インフルエンサー</span>
+愛嬌・巧みなトーク・“おいしい瞬間”をキャッチする力が生きる。<br>
+<span class="match-job">・プロジェクトの調整役・サブリーダー</span>
+人を巻き込んで目標に導く、計画と機転を両立させる役回りも◎。`
+},
+  16:{name:"舞台チョウ — TSZW", img:"https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/3.jpg",desc:
+`<strong class="label label--personality">性格</strong>
+舞台チョウは、人の視線を集めることや、自分らしさを思いっきり表現することを楽しむ存在。笑顔もリアクションも華やかで、周りの空気を一気に明るくできるパワーがあります。<br>
+でも、外見が強そうに見えても、本当はとても繊細。「もっと認められたい」「自分の表現を受け止めてほしい」と強く願っている、ピュアで情熱的な一面も隠れています。<br>
+創作や演出、何かを“見せる”ことが得意なので、自然とチームのムードメーカーになったり、イベントやSNSでも活躍しがちです。<br>
+<strong class="label label--love">恋愛の性質</strong>
+舞台チョウは、毎日がちょっとドラマみたいな恋を望むタイプ。「かわいいね」「すごい！」と褒められたり、一緒に盛り上がったりすることで自信と幸せを感じます。<br>
+情熱的なリアクションや共感を、相手にも求めがちで、盛り上がりが続くほどどんどん本領発揮。時には不安や寂しさも大きくなりやすいから、安心させてくれる言葉や場の空気がとても大切です。<br>
+<strong class="label label--match">相性（おすすめ）</strong>
+<span class="match-type-name">すっとりハト — MGDK</span>
+<img class="match-type" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/4.jpg" alt="すっとりハト">
+すっとりハトは、舞台チョウの華やかなパフォーマンスを、無理なく自然体で受け止めてくれる存在。舞台チョウは、ハトの落ち着きと優しさに包まれることで、素直に自分を出しやすくなり、ハトは舞台の情熱や輝きを受け止めることで“自分も高まる”幸せを感じます。<br>
+お互いを認め合いながら、穏やかでバランスの取れた関係が続きやすいコンビです。<br>
+<strong class="label label--tip">向いている仕事</strong>
+舞台チョウの強みは、「表現力」「場の空気を変える力」「人の心を動かす情熱」。<br>
+人前で何かを伝える・見せる・盛り上げる役割や、アイデアを形にして評価される仕事が向いています。
+<span class="match-job">・企画・広報・イベントプランナー</span>
+人を惹きつけるアイデア、演出力、盛り上げる力が活きるポジション。<br>
+<span class="match-job">・広告・映像クリエイター/SNS運用</span>
+人の目を引く表現や、思いを発信する力が評価されやすい仕事。<br>
+<span class="match-job">・芸能・演劇・ダンサー・パフォーマー</span>
+舞台・イベント・YouTubeなど「自分を見せて輝ける」現場が向いています。<br>
+<span class="match-job">・営業・プレゼンター（人前で話す仕事）</span>
+相手の心を動かし、印象を残すのが得意。リアクションの良さが武器。<br>
+<span class="match-job">・教育・研修講師</span>
+飽きさせない話し方や、盛り上げ方を活かせる。`
+}
+};  
+
+    // ▼ 参照デザインやTYPE_CONTENTの上の方、HEART_COLORSのあとなどに追加
+    const COMMON_TAIL = `
+    <strong class="label label--last">最後に</strong>
+    正直、「休み多い」「リモートOK」「残業ほぼなし」って求人は世の中にいっぱいあるけど――<br>
+    実際は、それを見ただけで自分が本当に満足できる会社は選べませんよね...！<br><br>
+    自分のペースを大事にしたいけど、<br>
+    <span style="font-weight:bold;">
+    ・人間関係のギスギスした職場は苦手<br>
+    ・仕事の後の飲み会や無駄な集まりはしんどい<br>
+    ・静かに集中したいけど、困った時はちゃんとサポートもほしい
+    </span><br><br>
+    「わかるわ…」と思った人にこそ、よりそい転職を試してほしい。<br><br>
+    よりそい転職は、<br>
+    <span style="color:red; font-weight:bold;">“条件だけじゃなく、ちゃんと“静かな環境”や“余計なストレスなし”まで現実的に叶えられる会社”</span><br>
+    を、本気で厳選しています。<br><br>
+    <span style="font-weight:bold;">
+    ・休日多いのに本当に休める<br>
+    ・リモートでもチームの空気はギスギスしない<br>
+    ・無理に盛り上がる必要もない<br>
+    ・必要な時は自然に助けてもらえる
+     </span><br><br>
+    この“本音で選べる会社”を知ってるのが、うちの強み。<br>
+    他と同じに見えるかもしれないけど、一度求人を見ていただけたら、違いがわかるはずです。<br><br>
+        まずはLINE登録をしてみてください！
+    `;
+  /* 判定ロジック：2軸→16タイプ */
+  const MAX_AXIS = 30;
+  const THRESH_RATIO = 0.2;
+  const THRESH_X = Math.ceil(MAX_AXIS * THRESH_RATIO);
+  const THRESH_Y = Math.ceil(MAX_AXIS * THRESH_RATIO);
+  /* 要素参照 */
+  const root   = document.getElementById('questions');
+  const resultBtn = document.getElementById('result-btn');
+  const loading   = document.getElementById('loading');
+  const panel     = document.getElementById('result-panel');
+  const slot      = document.getElementById('result-slot');
+  const title     = document.getElementById('result-title');
+  const prevTop   = document.getElementById('prev-page');
+  const nextTop   = document.getElementById('next-page');
+  const dotsTop   = document.getElementById('page-dots');
+  const prevBot   = document.getElementById('prev-page-bottom');
+  const nextBot   = document.getElementById('next-page-bottom');
+  const dotsBot   = document.getElementById('page-dots-bottom');
+  const progressText = document.getElementById('progress-text');
+  const progressBar  = document.getElementById('progress-bar');
+  /* ステート */
+  const scores = Array(ITEMS.length).fill(null);
+  const sums   = { P1:0, P2:0, P3:0, P4:0 };
+  let page = 0;
+  const pages = Math.ceil(ITEMS.length / PAGE_SIZE);
+  function rangeForPage(p){
+    const start = p * PAGE_SIZE;
+    const end   = Math.min(start + PAGE_SIZE, ITEMS.length);
+    return [start, end];
+  }
+  function updateProgress(){
+    const answered = scores.filter(v => v !== null).length;
+    const pct = Math.round((answered / ITEMS.length) * 100);
+    if(progressText) progressText.textContent = `${answered} / ${ITEMS.length}`;
+    if(progressBar)  progressBar.style.width = `${pct}%`;
+  }
+function updateResultButtonState(){
+  // 既存：全設問が回答済みか
+  const allAnswered = scores.every(v => v !== null);
+
+  // 追加：年齢が選択されているか（空文字でない）
+  const ageSel = document.getElementById('age-select');
+  const ageOk  = !!(ageSel && ageSel.value && ageSel.value.trim() !== '');
+
+  const canRun = allAnswered && ageOk;
+
+  resultBtn.disabled = !canRun;
+  resultBtn.setAttribute('aria-disabled', String(!canRun));
+}
+  // ハートSVG（24x24基準：参照デザイン完全再現）
+  function createHeartSVG(side){
+    const svgNS='http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');
+    const path = document.createElementNS(svgNS,'path');
+    path.setAttribute('class','heart');
+    path.setAttribute('d', HEART_PATH);
+    path.setAttribute('stroke-width', '1.8'); // 枠をしっかり見せる
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('stroke-linecap', 'round');
+    const C = HEART_COLORS[side] || HEART_COLORS.pos;
+    // 初期は「非選択」状態：白塗り＋色枠
+    path.setAttribute('fill', C.idle);
+    path.setAttribute('stroke', C.stroke);
+    svg.appendChild(path);
+    return svg;
+  }
+  // 未選択/選択の色と影を反映
+  function paintHearts(choicesDiv){
+    [...choicesDiv.children].forEach(b=>{
+      const side = b.getAttribute('data-side'); // pos/neg
+      const C = HEART_COLORS[side] || HEART_COLORS.pos;
+      const svg = b.querySelector('svg');
+      if(!svg) return;
+      const path = svg.querySelector('.heart');
+      const isSelected = b.classList.contains('selected');
+      // 非選択は白塗り、選択時はベース色で塗り
+      path.setAttribute('fill', isSelected ? C.base : C.idle);
+      // 枠線は常に指定色
+      path.setAttribute('stroke', C.stroke);
+      // 影（選択時のみ軽く）
+      svg.style.filter = isSelected ? `drop-shadow(0 0 var(--ring) ${C.shadow})` : 'none';
+    });
+  }
+  function renderDots(container){
+    container.innerHTML = '';
+    for(let i=0;i<pages;i++){
+      const dot = document.createElement('div');
+      dot.className = 'page-dot' + (i===page ? ' active':'');
+      dot.setAttribute('role','button');
+      dot.setAttribute('aria-label',`ページ ${i+1}`);
+      dot.tabIndex = 0;
+      dot.addEventListener('click', ()=>{ page=i; renderPage(); });
+      dot.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); page=i; renderPage(); }});
+      container.appendChild(dot);
+    }
+  }
+  function renderPage(){
+    // ページャ状態
+    prevTop.disabled = prevBot.disabled = (page===0);
+    prevTop.setAttribute('aria-disabled', String(page===0));
+    prevBot.setAttribute('aria-disabled', String(page===0));
+    const onLast = (page === pages - 1);
+    if(onLast){
+      // レイアウト幅は保持して中央を崩さない
+      nextTop.style.visibility = 'hidden';
+      nextBot.style.visibility = 'hidden';
+      nextTop.style.pointerEvents = 'none';
+      nextBot.style.pointerEvents = 'none';
+    }else{
+      nextTop.style.visibility = 'visible';
+      nextBot.style.visibility = 'visible';
+      nextTop.style.pointerEvents = '';
+      nextBot.style.pointerEvents = '';
+      nextTop.textContent = '次へ';
+      nextBot.textContent = '次へ';
+    }
+    // ドット再描画
+    renderDots(dotsTop); renderDots(dotsBot);
+    // 質問レンダリング
+    const [start,end] = rangeForPage(page);
+    root.innerHTML = '';
+    for(let i=start;i<end;i++){
+      const item = ITEMS[i];
+      const block = document.createElement('div');
+      block.className = 'question-block';
+      block.id = `q-${i}`;
+      const q = document.createElement('p');
+      q.className = 'question-text';
+      q.textContent = `Q${i+1}. ${item.text}`;
+      block.appendChild(q);
+      const labels = document.createElement('div');
+      labels.className = 'scale-labels';
+      labels.innerHTML = '<span class="neg">← あてはまらない</span><span class="pos">あてはまる →</span>';
+      block.appendChild(labels);
+      const choicesDiv = document.createElement('div');
+      choicesDiv.className = 'choices';
+      CHOICES.forEach(ch=>{
+        const btn = document.createElement('button');
+        btn.type='button'; btn.className='choice-btn';
+        btn.setAttribute('data-side', ch.side);
+        btn.setAttribute('data-size', String(ch.size));
+        btn.setAttribute('data-value', String(ch.value));
+        btn.appendChild(createHeartSVG(ch.side));
+        if(scores[i] === ch.value) btn.classList.add('selected');
+        btn.addEventListener('click', ()=>{
+          scores[i] = ch.value;
+          // 同一設問内の選択状態更新
+          [...choicesDiv.children].forEach(b=>b.classList.remove('selected'));
+          btn.classList.add('selected');
+          // 色と影を反映（非選択=白塗り／選択=色塗り）
+          paintHearts(choicesDiv);
+          updateProgress();
+          updateResultButtonState();
+// ▼ 次の設問を“常に”画面中央へスムーズにスクロール（スマホ最適化）
+const nextEl = document.getElementById(`q-${i+1}`);
+if (nextEl) {
+  // iOS/Safari のアドレスバー縮みを考慮して visualViewport を優先
+  const vpH =
+    (window.visualViewport && window.visualViewport.height) ||
+    window.innerHeight ||
+    document.documentElement.clientHeight;
+  // Sticky 進捗バーの高さを少しだけ控えめに減算（被りにくくする）
+  const header = document.querySelector('.progress');
+  const headerH = header ? header.getBoundingClientRect().height : 0;
+  const rect = nextEl.getBoundingClientRect();
+  const currentY = window.pageYOffset || document.documentElement.scrollTop || 0;
+  // 目標位置: 要素が画面の“ほぼ中央”に来るように計算
+  const targetY =
+    currentY + rect.top - (vpH / 2 - rect.height / 2) - Math.max(0, headerH * 0.5);
+  window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+}        });
+        choicesDiv.appendChild(btn);
+      });
+      // 初期描画時にも現在の選択に応じた色を適用
+      paintHearts(choicesDiv);
+      block.appendChild(choicesDiv);
+      root.appendChild(block);
+    }
+    updateProgress();
+    updateResultButtonState();
+// ▼ ページ切替時：そのページの“最初の設問”を画面中央へ（スマホ最適化 & A11y）
+setTimeout(()=>{
+  try{
+    const [start] = rangeForPage(page);
+    const firstEl = document.getElementById(`q-${start}`);
+    if(firstEl){
+      // iOS/Safari のアドレスバー縮みを考慮して visualViewport を優先
+      const vpH =
+        (window.visualViewport && window.visualViewport.height) ||
+        window.innerHeight ||
+        document.documentElement.clientHeight;
+      // Sticky 進捗バーの高さを少しだけ控えめに減算（被りにくくする）
+      const header = document.querySelector('.progress');
+      const headerH = header ? header.getBoundingClientRect().height : 0;
+      const rect = firstEl.getBoundingClientRect();
+      const currentY = window.pageYOffset || document.documentElement.scrollTop || 0;
+      // 目標位置: 要素が画面の“ほぼ中央”に来るように計算
+      const targetY =
+        currentY + rect.top - (vpH / 2 - rect.height / 2) - Math.max(0, headerH * 0.5);
+      window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+      // フォーカスも移して操作性向上（スクロールは阻止）
+      const focusable = firstEl.querySelector('button, [tabindex]:not([tabindex="-1"])');
+      if (focusable && focusable.focus) focusable.focus({ preventScroll: true });
+    }
+  }catch(_e){}
+}, 0);
+}
+  // ページ移動
+  function toPrev(){ if(page>0){ page--; renderPage(); } }
+  function toNext(){ if(page<pages-1){ page++; renderPage(); } }
+  prevTop.addEventListener('click', toPrev);
+  prevBot.addEventListener('click', toPrev);
+  nextTop.addEventListener('click', toNext);
+  nextBot.addEventListener('click', toNext);
+  // 初期描画
+  renderPage();
+  // ===== 診断ロジック =====
+  resultBtn.addEventListener('click', function(){
+    // 年齢を取得してGoogleフォームへサイレント送信（未選択は「未選択」）
+const ageSel = document.getElementById('age-select');
+const ageVal = (ageSel && ageSel.value) ? ageSel.value : '未選択';
+if (ENTRY_AGE && GF_FORM_ACTION_AGE) {
+  postToGoogleFormSilent(GF_FORM_ACTION_AGE, { [ENTRY_AGE]: ageVal });
+}
+    if(scores.includes(null)){
+      const idx = scores.indexOf(null);
+      page = Math.floor(idx / PAGE_SIZE);
+      renderPage();
+      alert('未回答の設問があります。');
+      return;
+    }
+    resultBtn.disabled = true;
+    loading.style.display = 'block';
+    // 集計
+    sums.P1 = sums.P2 = sums.P3 = sums.P4 = 0;
+    ITEMS.forEach((it, idx)=>{ sums[it.pair] += it.dir * scores[idx]; });
+    // 2軸の差分
+    const scoreX = (sums.P1 || 0) - (sums.P4 || 0); // 情熱 − 安定
+    const scoreY = (sums.P2 || 0) - (sums.P3 || 0); // スペース − 対話
+    const THRESH_X = Math.ceil(30 * 0.2);
+    const THRESH_Y = Math.ceil(30 * 0.2);
+    // 方向（0は中立→負側にも正側にも寄せないが、bit的には0）
+    const dirX = scoreX > 0 ? 1 : (scoreX < 0 ? 0 : 0);
+    const dirY = scoreY > 0 ? 1 : (scoreY < 0 ? 0 : 0);
+    // 強度（|差|がしきい値以上）
+    const strX = Math.abs(scoreX) >= THRESH_X ? 1 : 0;
+    const strY = Math.abs(scoreY) >= THRESH_Y ? 1 : 0;
+    // 4bit → 0..15 → +1 → 1..16
+    const idx16 = (dirX<<3) | (strX<<2) | (dirY<<1) | (strY<<0);
+    const typeId = idx16 + 1;
+    setTimeout(()=>{
+      loading.style.display = 'none';
+      const c = TYPE_CONTENT[typeId] || {name:`Type ${typeId}`, img:`img/type${typeId}.jpg`, desc:`Type ${typeId} の説明（プレースホルダー）`};
+      title.innerHTML = `<span style="font-size:15px;">あなたの結果は...</span><br>「${c.name}」`;
+      slot.innerHTML = `
+        <img src="${c.img}" alt="${c.name}">
+        <p>${c.desc}${COMMON_TAIL}</p>
+        <a class="cta-btn" href="https://maemukicareer.jp/lp/25ph/8j7v" rel="noopener">
+            <img class="present_banner" src="https://agent.migi-nanameue.co.jp/wp-content/uploads/2025/09/%E8%BB%A2%E8%81%B7%E3%81%AE%E3%83%97%E3%83%AD%E3%81%8C%E5%BE%B9%E5%BA%95%E8%A7%A3%E8%AA%AC%E3%81%AE%E3%82%B3%E3%83%94%E3%83%BC-5.jpg" alt="スタバチケットプレゼント">
+        </a>
+      `;
+      panel.classList.add('show');
+      panel.scrollIntoView({ behavior:'smooth' });
+    }, 500);
+  });
+})();
+</script>
+</body>
+</html>
